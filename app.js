@@ -337,6 +337,16 @@ window.addEventListener('storage', (e) => {
   if (e.key === 'wa_extra_numbers' && state.user) location.reload();
 });
 
+// Permite ao painel de administração atualizar a lista de números sem recarregar.
+window.AppRefreshNumbers = async function () {
+  try {
+    let nums = await api.getNumbers();
+    if (state.user && state.user.role !== 'admin') nums = nums.filter(n => (state.user.numbers || []).includes(n.id));
+    state.numbers = nums;
+    renderNumberSwitch();
+  } catch (e) {}
+};
+
 /* ------------------------------- INÍCIO --------------------------------- */
 (async function init() {
   let saved = null;

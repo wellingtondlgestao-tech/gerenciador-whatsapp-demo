@@ -66,40 +66,67 @@
     const slot = el('div'); slot.id = 'connectSlot'; body.appendChild(slot);
   }
 
-  async function startConnectFlow(cfg) {
+  function startConnectFlow(cfg) {
     const slot = document.getElementById('connectSlot');
-    slot.innerHTML = '<div class="admin-note">Gerando link e código…</div>';
-    const r = await post('/api/connect/start', { label: 'Novo número' });
-    if (r.error === 'limite_atingido') { slot.innerHTML = `<div class="admin-note">Limite de ${r.max} números atingido.</div>`; return; }
-    const link = new URL(`connect.html?t=${r.token}`, location.href).href;
     slot.innerHTML = `
-      <div class="admin-note" style="margin-top:4px"><strong>Canal de disparo do link</strong> (para o responsável pelo número):</div>
-      <div class="chips" id="chanChips">
-        <button class="chip is-active" data-ch="email">✉️ E-mail</button>
-        <button class="chip" data-ch="sms">💬 SMS</button>
-        <button class="chip" data-ch="qr">🔳 QR no painel</button>
+      <div class="admin-note" style="margin-top:4px"><strong>Conectar novo número</strong> (com consentimento do responsável):</div>
+      <div class="connform__grid">
+        <div class="field"><label>País</label><input id="cfDDI" value="+55" /></div>
+        <div class="field"><label>DDD</label><input id="cfDDD" placeholder="11" /></div>
+        <div class="field"><label>Número</label><input id="cfNum" placeholder="90000-0000" /></div>
       </div>
-      <div id="chanInfo" class="admin-note"></div>
-      <div class="codebox">
-        <div class="admin-note" style="margin:0 0 8px">Código de confirmação (mostre ao responsável):</div>
-        <div class="codebox__digits">${esc(r.code)}</div>
-        <div class="codebox__link">Link: ${esc(link)}</div>
-      </div>`;
-    const info = slot.querySelector('#chanInfo');
-    const renderChan = (ch) => {
-      if (ch === 'sms') info.innerHTML = '📱 Link enviado por <strong>SMS</strong> ao responsável (simulado). No backend: Twilio/Zenvia.';
-      else if (ch === 'qr') info.innerHTML = '🔳 Mostre o <strong>QR/link</strong> no painel para o responsável abrir no próprio aparelho.';
-      else info.innerHTML = '📧 Link enviado por <strong>e-mail</strong> ao responsável (simulado). No backend: SMTP/provedor.';
-    };
-    renderChan('email');
+      <div class="field"><label>Nome / rótulo</label><input id="cfName" placeholder="Ex.: Vendas Zona Sul" /></div>
+      <div class="field"><label>Tipo</label>
+        <select id="cfType"><option value="comercial">Comercial</option><option value="pessoal">Pessoal (com consentimento)</option></select>
+      </div>
+      <div class="admin-note" style="margin-top:6px">Canal de disparo do link (ao responsável):</div>
+      <div class="chips" id="chanChips">
+        <button type="button" class="chip is-active" data-ch="email">✉️ E-mail</button>
+        <button type="button" class="chip" data-ch="sms">💬 SMS</button>
+        <button type="button" class="chip" data-ch="qr">🔳 QR no painel</button>
+      </div>
+      <button class="btn btn--primary" id="cfSend">Enviar link</button>
+      <div id="connResult"></div>`;
+    let channel = 'email';
     slot.querySelectorAll('#chanChips .chip').forEach(b => b.onclick = () => {
+      channel = b.dataset.ch;
       slot.querySelectorAll('#chanChips .chip').forEach(x => x.classList.toggle('is-active', x === b));
-      renderChan(b.dataset.ch);
     });
-    const openBtn = el('button', 'btn btn--ghost', 'Abrir página de conexão');
-    openBtn.onclick = () => window.open(link, '_blank');
-    slot.appendChild(openBtn);
-    slot.appendChild(el('div', 'admin-note', 'O responsável abre o link, informa este código e conclui pela etapa oficial da Meta. O código é interno — não é o código do WhatsApp. Ao concluir, o número passa a aparecer aqui na lista.'));
+    document.getElementById('cfSend').onclick = () => sendConnectLink(channel);
+  }
+
+  const val = (id) => (document.getElementById(id).value || '').trim();
+
+  async function sendConnectLink(channel) {
+    const ddi = val('cfDDI'), ddd = val('cfDDD'), num = val('cfNum'), name = val('cfName'), type = val('cfType');
+    const box = document.getElementById('connResult');
+    if (!ddd || !num) { box.innerHTML = '<div class="admin-note" style="color:var(--danger)">Informe DDD e número.</div>'; return; }
+    const phone = `${ddi} ${ddd} ${num}`.replace(/\s+/g, ' ').trim();
+    const r = await post('/api/connect/start', { label: name || phone, phone, type });
+    if (r.error === 'limite_atingido') { box.innerHTML = `<div class="admin-note">Limite de ${r.max} números atingido.</div>`; return; }
+    const link = new URL(`connect.html?t=${r.token}`, location.href).href;
+    const chan = channel === 'sms' ? `SMS para ${esc(phone)}` : channel === 'qr' ? 'QR no painel' : 'e-mail ao responsável';
+    box.innerHTML = `
+      <div class="admin-note" style="margin-top:12px">✅ Link enviado (${chan}, simulado). Peça ao responsável para abrir o link e ler o <strong>código de confirmação</strong>.</div>
+      <button class="btn btn--ghost" id="cfOpen" style="margin:8px 0">Abrir página de conexão (visão do responsável)</button>
+      <div class="field"><label>Digite o código que o responsável informou</label><input id="cfCode" inputmode="numeric" maxlength="6" placeholder="6 dígitos" /></div>
+      <button class="btn btn--primary" id="cfConnect">Conectar</button>
+      <div id="cfMsg" class="admin-note"></div>`;
+    document.getElementById('cfOpen').onclick = () => window.open(link, '_blank');
+    document.getElementById('cfConnect').onclick = async () => {
+      const code = val('cfCode');
+      const v = await post(`/api/connect/${r.token}/verify`, { code });
+      const msg = document.getElementById('cfMsg');
+      if (v.status === 'ok') {
+        msg.innerHTML = '✅ Número conectado! Atualizando a lista…';
+        if (window.AppRefreshNumbers) window.AppRefreshNumbers();
+        setTimeout(() => renderNumeros(), 800);
+        return;
+      }
+      if (v.status === 'expirado') { msg.textContent = 'Código/link expirado. Envie um novo link.'; return; }
+      if (v.status === 'bloqueado') { msg.textContent = 'Muitas tentativas. Envie um novo link.'; return; }
+      msg.textContent = `Código incorreto. Tentativas restantes: ${v.remaining ?? 0}.`;
+    };
   }
 
   /* ------------------------------- Equipe ------------------------------- */
