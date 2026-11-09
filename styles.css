@@ -298,6 +298,9 @@ body {
 .codebox { text-align: center; background: var(--panel-2); border: 1px dashed var(--accent); border-radius: 12px; padding: 18px; margin: 10px 0; }
 .codebox__digits { font-size: 30px; font-weight: 800; letter-spacing: 8px; color: var(--accent); }
 .codebox__link { font-size: 12px; color: var(--text-2); word-break: break-all; margin-top: 8px; }
+.chips { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+.chip { border: 1px solid var(--divider); background: var(--panel-2); color: var(--text); border-radius: 20px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
+.chip.is-active { border-color: var(--accent); color: var(--accent); background: rgba(0,168,132,.12); }
 .role { font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
 .role--admin { background: rgba(101,170,221,.16); color: #65aadd; }
 .role--visualizador { background: var(--panel-3); color: var(--text-2); }

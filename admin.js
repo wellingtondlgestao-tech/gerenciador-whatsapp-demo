@@ -73,15 +73,33 @@
     if (r.error === 'limite_atingido') { slot.innerHTML = `<div class="admin-note">Limite de ${r.max} números atingido.</div>`; return; }
     const link = new URL(`connect.html?t=${r.token}`, location.href).href;
     slot.innerHTML = `
+      <div class="admin-note" style="margin-top:4px"><strong>Canal de disparo do link</strong> (para o responsável pelo número):</div>
+      <div class="chips" id="chanChips">
+        <button class="chip is-active" data-ch="email">✉️ E-mail</button>
+        <button class="chip" data-ch="sms">💬 SMS</button>
+        <button class="chip" data-ch="qr">🔳 QR no painel</button>
+      </div>
+      <div id="chanInfo" class="admin-note"></div>
       <div class="codebox">
         <div class="admin-note" style="margin:0 0 8px">Código de confirmação (mostre ao responsável):</div>
         <div class="codebox__digits">${esc(r.code)}</div>
         <div class="codebox__link">Link: ${esc(link)}</div>
       </div>`;
+    const info = slot.querySelector('#chanInfo');
+    const renderChan = (ch) => {
+      if (ch === 'sms') info.innerHTML = '📱 Link enviado por <strong>SMS</strong> ao responsável (simulado). No backend: Twilio/Zenvia.';
+      else if (ch === 'qr') info.innerHTML = '🔳 Mostre o <strong>QR/link</strong> no painel para o responsável abrir no próprio aparelho.';
+      else info.innerHTML = '📧 Link enviado por <strong>e-mail</strong> ao responsável (simulado). No backend: SMTP/provedor.';
+    };
+    renderChan('email');
+    slot.querySelectorAll('#chanChips .chip').forEach(b => b.onclick = () => {
+      slot.querySelectorAll('#chanChips .chip').forEach(x => x.classList.toggle('is-active', x === b));
+      renderChan(b.dataset.ch);
+    });
     const openBtn = el('button', 'btn btn--ghost', 'Abrir página de conexão');
     openBtn.onclick = () => window.open(link, '_blank');
     slot.appendChild(openBtn);
-    slot.appendChild(el('div', 'admin-note', 'O responsável abre o link, informa este código e conclui pela etapa oficial da Meta (seção 5 da especificação). O código é interno — não é o código do WhatsApp.'));
+    slot.appendChild(el('div', 'admin-note', 'O responsável abre o link, informa este código e conclui pela etapa oficial da Meta. O código é interno — não é o código do WhatsApp. Ao concluir, o número passa a aparecer aqui na lista.'));
   }
 
   /* ------------------------------- Equipe ------------------------------- */

@@ -332,6 +332,11 @@ $('#loginForm').addEventListener('submit', async (e) => {
   }
 });
 
+// Outra aba concluiu uma conexão (número novo) → recarrega para refletir.
+window.addEventListener('storage', (e) => {
+  if (e.key === 'wa_extra_numbers' && state.user) location.reload();
+});
+
 /* ------------------------------- INÍCIO --------------------------------- */
 (async function init() {
   let saved = null;

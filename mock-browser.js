@@ -59,7 +59,21 @@
   ];
 
   const MAX_NUMBERS = 3;
-  const CONNECT = new Map();
+  // Estado compartilhado entre abas (o link de conexão abre em outra aba).
+  const LS_CONNECT = 'wa_connect', LS_EXTRA = 'wa_extra_numbers';
+  const lsRead = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || d); } catch { return JSON.parse(d); } };
+  const lsWrite = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+  const connGet = (t) => lsRead(LS_CONNECT, '{}')[t] || null;
+  const connPut = (t, s) => { const a = lsRead(LS_CONNECT, '{}'); a[t] = s; lsWrite(LS_CONNECT, a); };
+  (lsRead(LS_EXTRA, '[]')).forEach((n) => { if (!NUMBERS.some(x => x.id === n.id)) NUMBERS.push(n); });
+  function addConnectedNumber(label) {
+    const id = 'n' + (NUMBERS.length + 1);
+    const t = String(1000 + Math.floor(Math.random() * 9000));
+    const num = { id, name: label || 'Novo número', phone: '+55 11 9' + t + '-' + t, type: 'comercial', status: 'conectado' };
+    NUMBERS.push(num);
+    const extra = lsRead(LS_EXTRA, '[]'); extra.push(num); lsWrite(LS_EXTRA, extra);
+    return num;
+  }
   const TTL = 10 * 60 * 1000, MAX_ATTEMPTS = 5;
   const gen6 = () => String(Math.floor(100000 + Math.random() * 900000));
   const newToken = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -82,8 +96,8 @@
     return out;
   }
   function connectState(t) {
-    const s = CONNECT.get(t); if (!s) return { status: 'invalido' };
-    if (s.status === 'pendente' && Date.now() > s.expiresAt) s.status = 'expirado';
+    const s = connGet(t); if (!s) return { status: 'invalido' };
+    if (s.status === 'pendente' && Date.now() > s.expiresAt) { s.status = 'expirado'; connPut(t, s); }
     return { status: s.status, label: s.label, expiresAt: s.expiresAt, attemptsLeft: MAX_ATTEMPTS - s.attempts };
   }
 
@@ -111,22 +125,22 @@
 
     if (path === '/api/connect/start' && method === 'POST') {
       if (NUMBERS.length >= MAX_NUMBERS) return [409, { error: 'limite_atingido', max: MAX_NUMBERS }];
-      const t = newToken(); CONNECT.set(t, { code: gen6(), label: body.label || 'Novo número', expiresAt: Date.now() + TTL, attempts: 0, status: 'pendente' });
-      const s = CONNECT.get(t); return [200, { token: t, code: s.code, label: s.label, expiresAt: s.expiresAt }];
+      const t = newToken(); connPut(t, { code: gen6(), label: body.label || 'Novo número', expiresAt: Date.now() + TTL, attempts: 0, status: 'pendente' });
+      const s = connGet(t); return [200, { token: t, code: s.code, label: s.label, expiresAt: s.expiresAt }];
     }
     if ((g = path.match(/^\/api\/connect\/([^/]+)$/)) && method === 'GET') return [200, connectState(g[1])];
     if ((g = path.match(/^\/api\/connect\/([^/]+)\/verify$/)) && method === 'POST') {
-      const s = CONNECT.get(g[1]);
+      const s = connGet(g[1]);
       if (!s) return [200, { status: 'invalido' }];
       if (s.status === 'concluido') return [200, { status: 'concluido' }];
-      if (Date.now() > s.expiresAt) { s.status = 'expirado'; return [200, { status: 'expirado' }]; }
-      if (s.attempts >= MAX_ATTEMPTS) { s.status = 'bloqueado'; return [200, { status: 'bloqueado' }]; }
-      if (String(body.code) === s.code) { s.status = 'concluido'; return [200, { status: 'ok' }]; }
-      s.attempts++; return [200, { status: 'errado', remaining: MAX_ATTEMPTS - s.attempts }];
+      if (Date.now() > s.expiresAt) { s.status = 'expirado'; connPut(g[1], s); return [200, { status: 'expirado' }]; }
+      if (s.attempts >= MAX_ATTEMPTS) { s.status = 'bloqueado'; connPut(g[1], s); return [200, { status: 'bloqueado' }]; }
+      if (String(body.code) === s.code) { s.status = 'concluido'; connPut(g[1], s); addConnectedNumber(s.label); return [200, { status: 'ok' }]; }
+      s.attempts++; connPut(g[1], s); return [200, { status: 'errado', remaining: MAX_ATTEMPTS - s.attempts }];
     }
     if ((g = path.match(/^\/api\/connect\/([^/]+)\/renew$/)) && method === 'POST') {
-      const s = CONNECT.get(g[1]); if (!s) return [404, { error: 'invalido' }];
-      s.code = gen6(); s.expiresAt = Date.now() + TTL; s.attempts = 0; s.status = 'pendente';
+      const s = connGet(g[1]); if (!s) return [404, { error: 'invalido' }];
+      s.code = gen6(); s.expiresAt = Date.now() + TTL; s.attempts = 0; s.status = 'pendente'; connPut(g[1], s);
       return [200, { token: g[1], code: s.code, expiresAt: s.expiresAt }];
     }
     return [404, { error: 'not_found' }];
