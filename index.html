@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gerenciador de WhatsApp — Espelho (somente leitura)</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-theme="dark">
+  <!-- ===================== Login ===================== -->
+  <div id="loginScreen" class="login">
+    <form class="login__card" id="loginForm">
+      <div class="login__logo">W</div>
+      <h1>Gerenciador de WhatsApp</h1>
+      <p class="login__sub">Entre para acessar o espelho de conversas <strong>(somente leitura)</strong>.</p>
+      <div class="field"><label>E-mail</label><input id="loginEmail" type="email" value="ana@empresa.com" autocomplete="username" /></div>
+      <div class="field"><label>Senha</label><input id="loginPass" type="password" value="teste123" autocomplete="current-password" /></div>
+      <div class="login__msg" id="loginMsg"></div>
+      <button class="btn btn--primary login__btn" type="submit">Entrar</button>
+      <div class="login__hint">Teste com <strong>ana@empresa.com</strong> (admin) ou <strong>bruno@empresa.com</strong> (visualizador) · senha <strong>teste123</strong></div>
+    </form>
+  </div>
+
+  <div id="app" class="app" hidden>
+    <!-- Barra de ícones (navegação à esquerda) -->
+    <nav class="rail" aria-label="Navegação">
+      <div class="rail__top">
+        <button class="rail__brand" title="Gerenciador de WhatsApp" aria-label="Início">
+          <span class="rail__brand-mark">W</span>
+        </button>
+        <div class="rail__items" id="railFolders"></div>
+      </div>
+      <div class="rail__bottom">
+        <button class="rail__btn" data-action="settings" title="Configurações" aria-label="Configurações">⚙️</button>
+        <button class="rail__btn" data-action="logout" title="Sair" aria-label="Sair">⎋</button>
+      </div>
+    </nav>
+
+    <!-- Coluna de lista (seletor de número + conversas/galerias) -->
+    <section class="list" aria-label="Lista">
+      <header class="list__header">
+        <div class="numswitch" id="numSwitch" role="button" tabindex="0" aria-haspopup="listbox">
+          <div class="numswitch__avatar" id="numAvatar">C</div>
+          <div class="numswitch__meta">
+            <span class="numswitch__name" id="numName">—</span>
+            <span class="numswitch__phone" id="numPhone">—</span>
+          </div>
+          <span class="numswitch__caret">▾</span>
+          <span class="live" id="liveBadge" title="Espelhamento ao vivo"><span class="live__dot"></span>ao vivo</span>
+        </div>
+        <ul class="numswitch__menu" id="numMenu" role="listbox" hidden></ul>
+        <div class="list__search">
+          <input id="searchInput" type="search" placeholder="Buscar conversa ou mensagem" aria-label="Buscar" />
+        </div>
+        <h2 class="list__title" id="listTitle">Conversas</h2>
+      </header>
+      <div class="list__body" id="listBody"></div>
+    </section>
+
+    <!-- Painel da conversa / conteúdo -->
+    <main class="chat" aria-label="Conversa">
+      <div id="chatEmpty" class="chat__empty">
+        <div class="chat__empty-card">
+          <div class="chat__empty-logo">💬</div>
+          <h1>Gerenciador de WhatsApp</h1>
+          <p>Espelhamento em tempo real, <strong>somente leitura</strong>. Selecione uma conversa à esquerda.</p>
+        </div>
+      </div>
+
+      <div id="chatView" class="chat__view" hidden>
+        <header class="chat__header">
+          <div class="chat__peer">
+            <div class="avatar" id="peerAvatar">A</div>
+            <div class="chat__peer-meta">
+              <span class="chat__peer-name" id="peerName">—</span>
+              <span class="chat__peer-sub" id="peerSub">—</span>
+            </div>
+          </div>
+          <div class="chat__flags" id="chatFlags"></div>
+        </header>
+
+        <div class="chat__messages" id="messages"></div>
+
+        <footer class="chat__readonly">
+          <span class="chat__readonly-lock">🔒</span>
+          Modo somente leitura — este painel espelha as conversas e não envia mensagens.
+        </footer>
+      </div>
+    </main>
+  </div>
+
+  <!-- ===================== Administração (overlay) ===================== -->
+  <div id="adminOverlay" class="overlay" hidden>
+    <div class="modal" role="dialog" aria-label="Administração">
+      <header class="modal__head">
+        <h2>Administração</h2>
+        <button class="modal__close" id="adminClose" aria-label="Fechar">✕</button>
+      </header>
+      <nav class="tabs" id="adminTabs">
+        <button class="tabs__btn is-active" data-tab="numeros">Números</button>
+        <button class="tabs__btn" data-tab="equipe">Equipe</button>
+        <button class="tabs__btn" data-tab="conexao">Conexão & Teste</button>
+      </nav>
+      <div class="modal__body" id="adminBody"></div>
+    </div>
+  </div>
+
+  <script src="mock-browser.js"></script>
+  <script src="app.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Concluir conexão</title>
+  <style>
+    :root { --accent:#00a884; --bg:#f6f8fa; --card:#fff; --text:#111b21; --muted:#667781; --danger:#d93b4b; --line:#e3e8ec; }
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+      background: var(--bg); color: var(--text); font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif; padding:20px; }
+    .card { width:100%; max-width:420px; background:var(--card); border:1px solid var(--line);
+      border-radius:18px; padding:36px 30px; text-align:center; box-shadow:0 8px 30px rgba(11,20,26,.08); }
+    .logo { width:56px; height:56px; border-radius:16px; margin:0 auto 18px;
+      background:linear-gradient(135deg,var(--accent),#008069); color:#fff; font-weight:800; font-size:26px;
+      display:flex; align-items:center; justify-content:center; }
+    h1 { font-size:17px; letter-spacing:.02em; margin:0 0 6px; }
+    .sub { color:var(--muted); font-size:13px; margin:0 0 24px; }
+    .code { display:flex; gap:8px; justify-content:center; margin:10px 0 6px; }
+    .code input { width:46px; height:56px; text-align:center; font-size:24px; font-weight:700;
+      border:1.5px solid var(--line); border-radius:12px; outline:none; color:var(--text); background:#fff; transition:border-color .15s; }
+    .code input:focus { border-color:var(--accent); }
+    .code.err input { border-color:var(--danger); }
+    .msg { min-height:20px; font-size:13px; margin:14px 0 4px; }
+    .msg.err { color:var(--danger); }
+    .msg.ok { color:var(--accent); font-weight:600; }
+    .btn { width:100%; margin-top:18px; border:none; border-radius:12px; padding:13px; font-size:15px; font-weight:600;
+      background:var(--accent); color:#fff; cursor:pointer; }
+    .btn:disabled { opacity:.5; cursor:default; }
+    .btn--ghost { background:transparent; color:var(--accent); border:1.5px solid var(--accent); }
+    .foot { margin-top:18px; font-size:11px; color:var(--muted); line-height:1.5; }
+    .timer { font-variant-numeric:tabular-nums; }
+    .done { font-size:46px; margin-bottom:8px; }
+    [hidden] { display:none !important; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">W</div>
+
+    <div id="form">
+      <h1>INFORME O CÓDIGO PARA CONCLUIR A ETAPA</h1>
+      <p class="sub">Digite o código de 6 dígitos exibido no painel.</p>
+      <div class="code" id="codeBox">
+        <input maxlength="1" inputmode="numeric" aria-label="dígito 1" />
+        <input maxlength="1" inputmode="numeric" aria-label="dígito 2" />
+        <input maxlength="1" inputmode="numeric" aria-label="dígito 3" />
+        <input maxlength="1" inputmode="numeric" aria-label="dígito 4" />
+        <input maxlength="1" inputmode="numeric" aria-label="dígito 5" />
+        <input maxlength="1" inputmode="numeric" aria-label="dígito 6" />
+      </div>
+      <div class="msg" id="msg">Expira em <span class="timer" id="timer">10:00</span></div>
+      <button class="btn" id="confirm" disabled>Confirmar</button>
+    </div>
+
+    <div id="expired" hidden>
+      <h1>Código expirado</h1>
+      <p class="sub">Este código não é mais válido. Gere um novo para continuar.</p>
+      <button class="btn btn--ghost" id="renew">Solicitar novo código</button>
+    </div>
+
+    <div id="success" hidden>
+      <div class="done">✅</div>
+      <h1>Etapa concluída</h1>
+      <p class="sub">Você pode voltar ao painel. A conexão segue para a confirmação oficial.</p>
+    </div>
+
+    <p class="foot">Este código é uma confirmação interna do gerenciador. Ele <strong>não é</strong> o código do WhatsApp e não dá acesso à sua conta.</p>
+  </div>
+
+  <script src="mock-browser.js"></script>
+  <script>
+    const token = new URLSearchParams(location.search).get('t');
+    const inputs = [...document.querySelectorAll('#codeBox input')];
+    const confirmBtn = document.getElementById('confirm');
+    const msg = document.getElementById('msg');
+    const codeBox = document.getElementById('codeBox');
+    let expiresAt = 0, ticking;
+
+    function show(id) { ['form','expired','success'].forEach(s => document.getElementById(s).hidden = s !== id); }
+    function code() { return inputs.map(i => i.value).join(''); }
+    function refreshBtn() { confirmBtn.disabled = code().length !== 6; }
+
+    inputs.forEach((inp, i) => {
+      inp.addEventListener('input', () => {
+        inp.value = inp.value.replace(/\D/g, '');
+        codeBox.classList.remove('err');
+        if (inp.value && i < 5) inputs[i + 1].focus();
+        refreshBtn();
+      });
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Backspace' && !inp.value && i > 0) inputs[i - 1].focus(); });
+    });
+
+    function startTimer() {
+      clearInterval(ticking);
+      ticking = setInterval(() => {
+        const left = Math.max(0, expiresAt - Date.now());
+        const mm = String(Math.floor(left / 60000)).padStart(2, '0');
+        const ss = String(Math.floor((left % 60000) / 1000)).padStart(2, '0');
+        const t = document.getElementById('timer'); if (t) t.textContent = `${mm}:${ss}`;
+        if (left <= 0) { clearInterval(ticking); show('expired'); }
+      }, 500);
+    }
+
+    async function loadState() {
+      if (!token) { msg.textContent = 'Link inválido.'; msg.className = 'msg err'; return; }
+      const s = await (await fetch(`/api/connect/${token}`)).json();
+      if (s.status === 'concluido') return show('success');
+      if (s.status === 'expirado' || s.status === 'invalido' || s.status === 'bloqueado') return show('expired');
+      expiresAt = s.expiresAt; show('form'); startTimer(); inputs[0].focus();
+    }
+
+    confirmBtn.addEventListener('click', async () => {
+      confirmBtn.disabled = true;
+      const r = await (await fetch(`/api/connect/${token}/verify`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code() }),
+      })).json();
+      if (r.status === 'ok') { clearInterval(ticking); return show('success'); }
+      if (r.status === 'expirado') return show('expired');
+      if (r.status === 'bloqueado') { msg.textContent = 'Muitas tentativas. Link bloqueado.'; msg.className = 'msg err'; return show('expired'); }
+      codeBox.classList.add('err');
+      msg.textContent = `Código incorreto. Tentativas restantes: ${r.remaining ?? 0}.`;
+      msg.className = 'msg err';
+      inputs.forEach(i => i.value = ''); inputs[0].focus(); refreshBtn();
+    });
+
+    document.getElementById('renew').addEventListener('click', async () => {
+      const r = await (await fetch(`/api/connect/${token}/renew`, { method: 'POST' })).json();
+      if (r.expiresAt) { expiresAt = r.expiresAt; inputs.forEach(i => i.value = ''); msg.textContent = 'Novo código gerado.'; msg.className = 'msg'; refreshBtn(); show('form'); startTimer(); inputs[0].focus(); }
+    });
+
+    loadState();
+  </script>
+</body>
+</html>
