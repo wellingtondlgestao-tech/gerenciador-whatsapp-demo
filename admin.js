@@ -107,8 +107,8 @@
     const link = new URL(`connect.html?t=${r.token}`, location.href).href;
     const chan = channel === 'sms' ? `SMS para ${esc(phone)}` : channel === 'qr' ? 'QR no painel' : 'e-mail ao responsável';
     box.innerHTML = `
-      <div class="admin-note" style="margin-top:12px">✅ Link enviado (${chan}, simulado). Peça ao responsável para abrir o link e ler o <strong>código de confirmação</strong>.</div>
-      <button class="btn btn--ghost" id="cfOpen" style="margin:8px 0">Abrir página de conexão (visão do responsável)</button>
+      <div class="admin-note" style="margin-top:12px">✅ Link gerado para <strong>${esc(phone)}</strong> (${chan}). <strong>Nesta demonstração nada é enviado de verdade ao telefone</strong> — o disparo real por SMS/e-mail exige o backend. Clique abaixo para ver a página que o responsável receberia e ler o <strong>código</strong>.</div>
+      <button class="btn btn--ghost" id="cfOpen" style="margin:8px 0">Ver a página do responsável (com o código)</button>
       <div class="field"><label>Digite o código que o responsável informou</label><input id="cfCode" inputmode="numeric" maxlength="6" placeholder="6 dígitos" /></div>
       <button class="btn btn--primary" id="cfConnect">Conectar</button>
       <div id="cfMsg" class="admin-note"></div>`;
