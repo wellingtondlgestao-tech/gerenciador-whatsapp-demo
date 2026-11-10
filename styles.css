@@ -1,22 +1,23 @@
 /* ============ Tema ============ */
 :root {
-  --bg: #0b141a;
-  --rail-bg: #0d1a22;
-  --panel: #111b21;
-  --panel-2: #202c33;
-  --panel-3: #2a3942;
-  --divider: #222d34;
-  --text: #e9edef;
-  --text-2: #8696a0;
-  --text-3: #667781;
-  --accent: #00a884;
+  --bg: #efeae2;              /* fundo do chat (bege clássico) */
+  --rail-bg: #075e54;         /* barra lateral verde escuro */
+  --header: #008069;          /* cabeçalhos verdes */
+  --panel: #ffffff;           /* lista de conversas */
+  --panel-2: #f0f2f5;
+  --panel-3: #e9edef;
+  --divider: #e9edef;
+  --text: #111b21;
+  --text-2: #667781;
+  --text-3: #8696a0;
+  --accent: #008069;
   --accent-ink: #053e34;
-  --in-bubble: #202c33;
-  --out-bubble: #005c4b;
-  --badge: #00a884;
-  --danger: #f15c6d;
-  --warn: #e5b73b;
-  --shadow: 0 2px 10px rgba(0,0,0,.35);
+  --in-bubble: #ffffff;
+  --out-bubble: #d9fdd3;      /* balão enviado (verde claro) */
+  --badge: #25d366;
+  --danger: #d93b4b;
+  --warn: #b7860b;
+  --shadow: 0 1px 2px rgba(11,20,26,.13);
   --radius: 10px;
 }
 body[data-theme="light"] {
@@ -310,6 +311,33 @@ body {
 /* scrollbars */
 *::-webkit-scrollbar { width: 8px; }
 *::-webkit-scrollbar-thumb { background: var(--panel-3); border-radius: 8px; }
+
+/* ============ Tema clássico WhatsApp: cabeçalhos verdes ============ */
+.rail__brand { background: #ffffff; color: var(--accent); }
+.rail__btn { color: rgba(255,255,255,.72); }
+.rail__btn:hover { background: rgba(255,255,255,.12); color: #fff; }
+.rail__btn.is-active { background: rgba(255,255,255,.16); color: #fff; }
+.rail__btn.is-active::before { background: #fff; }
+.rail__count { background: #25d366; color: #05331f; }
+
+.list__header { background: var(--header); border-bottom: 1px solid rgba(255,255,255,.14); }
+.numswitch:hover { background: rgba(255,255,255,.12); }
+.numswitch__avatar { background: rgba(255,255,255,.25); color: #fff; }
+.numswitch__name { color: #fff; }
+.numswitch__phone, .numswitch__caret, .list__title { color: rgba(255,255,255,.85); }
+.live { color: #fff; background: rgba(255,255,255,.2); }
+.live__dot { background: #fff; }
+.list__search input { background: #ffffff; color: var(--text); }
+.list__search input::placeholder { color: var(--text-3); }
+.numswitch__menu { background: #fff; border-color: var(--divider); }
+.numswitch__menu li:hover { background: var(--panel-2); }
+
+.chat__header { background: var(--header); border-bottom: 1px solid rgba(0,0,0,.06); }
+.chat__peer-name { color: #fff; }
+.chat__peer-sub { color: rgba(255,255,255,.85); }
+
+.msg--out .msg__time { color: rgba(17,27,33,.45); }
+.chat::before { opacity: .06; }
 
 /* responsivo (quebra simples para telas estreitas) */
 @media (max-width: 840px) {
