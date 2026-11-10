@@ -1,0 +1,13 @@
+{
+  "name": "gerenciador-whatsapp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Gerenciador de WhatsApp — espelho somente leitura (Cloud API)",
+  "scripts": {
+    "start": "node server/whatsapp-backend.js",
+    "mock": "node server/mock-server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,26 @@
+# Deploy no Render (https://render.com) — conecte este repositório e use este blueprint.
+# Defina os valores dos env vars no painel do Render (não os coloque aqui).
+services:
+  - type: web
+    name: gerenciador-whatsapp
+    runtime: node
+    plan: free
+    buildCommand: ""
+    startCommand: node server/whatsapp-backend.js
+    envVars:
+      - key: VERIFY_TOKEN
+        sync: false
+      - key: WHATSAPP_TOKEN
+        sync: false
+      - key: APP_SECRET
+        sync: false
+      - key: WA_NUMBERS
+        sync: false
+      - key: WABA_ID
+        sync: false
+      - key: APP_ID
+        sync: false
+      - key: LOGIN_EMAIL
+        sync: false
+      - key: LOGIN_PASSWORD
+        sync: false
