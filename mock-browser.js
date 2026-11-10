@@ -91,7 +91,7 @@
   }
   function listDeleted(id) {
     const out = [];
-    for (const c of (CONVERSATIONS[id] || [])) for (const x of c.messages) if (x.type === 'deleted') out.push({ conv: c.name, when: x.deletedAt, text: x.text, dir: x.dir });
+    for (const c of (CONVERSATIONS[id] || [])) for (const x of c.messages) if (x.type === 'deleted') out.push({ convId: c.id, conv: c.name, when: x.deletedAt, text: x.text, dir: x.dir });
     return out;
   }
   function connectState(t) {

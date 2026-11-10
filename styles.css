@@ -229,6 +229,11 @@ body {
 .msg__doc { display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,.18); padding: 8px 10px; border-radius: 8px; }
 
 .msg--deleted { background: transparent; border: 1px dashed var(--divider); box-shadow: none; color: var(--text-2); font-style: italic; display: flex; align-items: center; gap: 8px; }
+.msg--revealed { border: 1.5px solid var(--danger); }
+.msg--revealed .tag--deleted { margin-right: 4px; }
+.reveal-banner { align-self: center; background: rgba(217,59,75,.12); color: var(--danger); font-size: 12px; font-weight: 600; padding: 7px 14px; border-radius: 8px; margin: 2px 0 12px; text-align: center; max-width: 82%; box-shadow: var(--shadow); }
+.deleted-item { transition: background .12s; }
+.deleted-item:hover { background: var(--panel-2); }
 .msg--deleted .msg__time { font-style: normal; }
 
 .deleted-item { padding: 12px 14px; border-bottom: 1px solid var(--divider); }

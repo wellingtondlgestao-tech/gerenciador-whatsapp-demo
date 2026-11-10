@@ -26,7 +26,7 @@ const api = {
 /* ------------------------------- ESTADO --------------------------------- */
 const state = {
   numberId: 'n1', folder: 'conversas', convId: null, search: '',
-  numbers: [], convsById: {}, msgCache: {}, deletedCount: 0, es: null, user: null,
+  numbers: [], convsById: {}, msgCache: {}, deletedCount: 0, es: null, user: null, revealDeleted: false,
 };
 
 const FOLDERS = [
@@ -107,7 +107,9 @@ async function renderList() {
             <span class="deleted-item__when">apagada ${esc(d.when)}</span>
           </div>
           <div class="deleted-item__body">${esc(d.text)}</div>
-          <div class="deleted-item__sub">Conteúdo preservado no arquivo (${d.dir === 'in' ? 'recebida' : 'enviada'}).</div>`;
+          <div class="deleted-item__sub">${d.dir === 'in' ? 'Recebida' : 'Enviada'} · clique para ver na conversa</div>`;
+        box.style.cursor = 'pointer';
+        box.onclick = () => openDeletedConversation(d.convId);
         body.appendChild(box);
       }
       return;
@@ -163,6 +165,7 @@ function renderConvItem(c) {
 
 async function openConversation(convId) {
   state.convId = convId;
+  state.revealDeleted = false;
   const c = state.convsById[convId];
   if (c) c.unread = 0;
   document.getElementById('app').classList.add('show-chat');
@@ -170,11 +173,23 @@ async function openConversation(convId) {
   await renderChat();
 }
 
+// Abre a conversa a partir da aba "Apagadas", revelando o conteúdo apagado no contexto.
+async function openDeletedConversation(convId) {
+  if (!convId) return;
+  if (!state.convsById[convId]) {
+    try { const convs = await api.getConversations(state.numberId, 'conversas'); for (const c of convs) state.convsById[c.id] = c; } catch (e) {}
+  }
+  state.convId = convId;
+  state.revealDeleted = true;
+  document.getElementById('app').classList.add('show-chat');
+  await renderChat();
+}
+
 async function renderChat() {
   const empty = $('#chatEmpty'), view = $('#chatView');
-  const invalidFolder = ['apagadas', 'midias', 'figurinhas', 'gifs'].includes(state.folder);
   const c = state.convsById[state.convId];
-  if (!state.convId || invalidFolder || !c) { empty.hidden = false; view.hidden = true; return; }
+  const mediaFolder = ['midias', 'figurinhas', 'gifs'].includes(state.folder);
+  if (!state.convId || mediaFolder || !c) { empty.hidden = false; view.hidden = true; return; }
 
   empty.hidden = true; view.hidden = false;
   $('#peerAvatar').textContent = initials(c.name);
@@ -190,16 +205,28 @@ async function renderChat() {
   if (state.convId !== c.id) return; // trocou durante o fetch
 
   box.innerHTML = '';
+  if (state.revealDeleted) box.appendChild(el('div', 'reveal-banner', '🗑️ Exibindo a conversa com o conteúdo apagado preservado, como estava antes.'));
   let lastDay = null;
   for (const mm of msgs) {
     if (mm.day !== lastDay) { box.appendChild(el('div', 'daysep', mm.day)); lastDay = mm.day; }
     box.appendChild(renderMessage(mm));
   }
-  box.scrollTop = box.scrollHeight;
+  const firstRevealed = box.querySelector('.msg--revealed');
+  if (state.revealDeleted && firstRevealed) firstRevealed.scrollIntoView({ block: 'center' });
+  else box.scrollTop = box.scrollHeight;
 }
 
 function renderMessage(m) {
   if (m.type === 'deleted') {
+    if (state.revealDeleted) {
+      const r = el('div', 'msg msg--' + m.dir + ' msg--revealed');
+      let ri = '';
+      if (m.sender && m.dir === 'in') ri += `<div class="msg__sender">${esc(m.sender)}</div>`;
+      ri += `<div>${esc(m.text)}</div>`;
+      ri += `<div class="msg__meta"><span class="tag tag--deleted">🚫 apagada ${esc(m.deletedAt || '')}</span><span class="msg__time">${m.time || ''}</span></div>`;
+      r.innerHTML = ri;
+      return r;
+    }
     return el('div', 'msg msg--' + m.dir + ' msg--deleted',
       `🚫 Esta mensagem foi apagada <span class="msg__time">· ${m.deletedAt || ''}</span>`);
   }
