@@ -12,6 +12,15 @@
   const get = (u) => fetch(u).then(r => r.json());
   const post = (u, b) => fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }).then(r => r.json());
 
+  // Configuração do EmailJS (envio de e-mail direto do navegador, sem backend).
+  const EJS_KEY = 'wa_emailjs';
+  const ejsCfg = () => { try { return JSON.parse(localStorage.getItem(EJS_KEY) || '{}'); } catch { return {}; } };
+  const ejsReady = () => { const c = ejsCfg(); return !!(c.serviceId && c.templateId && c.publicKey && typeof emailjs !== 'undefined'); };
+  async function sendEmail({ to_email, to_name, link, phone }) {
+    const c = ejsCfg();
+    return emailjs.send(c.serviceId, c.templateId, { to_email, to_name, link, phone, from_name: 'Espelho' }, { publicKey: c.publicKey });
+  }
+
   function open() { overlay.hidden = false; render(); }
   function close() { overlay.hidden = true; }
 
@@ -76,6 +85,7 @@
         <div class="field"><label>Número</label><input id="cfNum" placeholder="90000-0000" /></div>
       </div>
       <div class="field"><label>Nome / rótulo</label><input id="cfName" placeholder="Ex.: Vendas Zona Sul" /></div>
+      <div class="field"><label>E-mail do responsável (recebe o link)</label><input id="cfEmail" type="email" placeholder="responsavel@empresa.com" /></div>
       <div class="field"><label>Tipo</label>
         <select id="cfType"><option value="comercial">Comercial</option><option value="pessoal">Pessoal (com consentimento)</option></select>
       </div>
@@ -98,16 +108,37 @@
   const val = (id) => (document.getElementById(id).value || '').trim();
 
   async function sendConnectLink(channel) {
-    const ddi = val('cfDDI'), ddd = val('cfDDD'), num = val('cfNum'), name = val('cfName'), type = val('cfType');
+    const ddi = val('cfDDI'), ddd = val('cfDDD'), num = val('cfNum'), name = val('cfName'), type = val('cfType'), email = val('cfEmail');
     const box = document.getElementById('connResult');
     if (!ddd || !num) { box.innerHTML = '<div class="admin-note" style="color:var(--danger)">Informe DDD e número.</div>'; return; }
+    if (channel === 'email' && !email) { box.innerHTML = '<div class="admin-note" style="color:var(--danger)">Informe o e-mail do responsável para enviar o link.</div>'; return; }
     const phone = `${ddi} ${ddd} ${num}`.replace(/\s+/g, ' ').trim();
-    const r = await post('/api/connect/start', { label: name || phone, phone, type });
+    box.innerHTML = '<div class="admin-note">Gerando link…</div>';
+    const r = await post('/api/connect/start', { label: name || phone, phone, type, email });
     if (r.error === 'limite_atingido') { box.innerHTML = `<div class="admin-note">Limite de ${r.max} números atingido.</div>`; return; }
     const link = new URL(`connect.html?t=${r.token}`, location.href).href;
-    const chan = channel === 'sms' ? `SMS para ${esc(phone)}` : channel === 'qr' ? 'QR no painel' : 'e-mail ao responsável';
+
+    let note;
+    if (channel === 'email' && ejsReady()) {
+      box.innerHTML = `<div class="admin-note">Enviando e-mail para ${esc(email)}…</div>`;
+      try {
+        await Promise.race([
+          sendEmail({ to_email: email, to_name: name || phone, link, phone }),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('tempo esgotado ao enviar')), 15000)),
+        ]);
+        note = `✅ E-mail enviado para <strong>${esc(email)}</strong> com o link de conexão. Peça ao responsável para abrir o link e ler o <strong>código</strong>.`;
+      } catch (e) {
+        const detail = (e && (e.text || e.message)) || 'erro desconhecido';
+        note = `⚠️ Falha ao enviar o e-mail: ${esc(String(detail))}. Confira as chaves do EmailJS em “Conexão & Teste”. Você ainda pode testar abrindo a página abaixo.`;
+      }
+    } else if (channel === 'email') {
+      note = `ℹ️ EmailJS não configurado — nada foi enviado. Configure em “Conexão & Teste” para enviar de verdade. Por enquanto, abra a página abaixo para pegar o código.`;
+    } else {
+      note = `ℹ️ Canal ${channel === 'sms' ? 'SMS' : 'QR no painel'}: nesta demonstração só o e-mail dispara de verdade. Abra a página abaixo para pegar o código.`;
+    }
+
     box.innerHTML = `
-      <div class="admin-note" style="margin-top:12px">✅ Link gerado para <strong>${esc(phone)}</strong> (${chan}). <strong>Nesta demonstração nada é enviado de verdade ao telefone</strong> — o disparo real por SMS/e-mail exige o backend. Clique abaixo para ver a página que o responsável receberia e ler o <strong>código</strong>.</div>
+      <div class="admin-note" style="margin-top:12px">${note}</div>
       <button class="btn btn--ghost" id="cfOpen" style="margin:8px 0">Ver a página do responsável (com o código)</button>
       <div class="field"><label>Digite o código que o responsável informou</label><input id="cfCode" inputmode="numeric" maxlength="6" placeholder="6 dígitos" /></div>
       <button class="btn btn--primary" id="cfConnect">Conectar</button>
@@ -177,6 +208,28 @@
     };
     body.append(testBtn, result);
     body.appendChild(el('div', 'admin-note', 'Credenciais mascaradas por segurança. No backend real ficam em cofre de segredos, nunca no front.'));
+
+    // EmailJS — envio real do link por e-mail (direto do navegador, sem backend)
+    const c = ejsCfg();
+    const ejs = el('div');
+    ejs.innerHTML = `
+      <hr style="border:none;border-top:1px solid var(--divider);margin:18px 0" />
+      <div class="admin-row__title" style="margin-bottom:4px">Envio de e-mail (EmailJS) ${ejsReady() ? '<span class="status status--conectado">configurado</span>' : '<span class="status status--pendente">não configurado</span>'}</div>
+      <div class="admin-note">Envia o link por e-mail sem backend. Crie uma conta gratuita em emailjs.com e cole as 3 chaves abaixo.</div>
+      <div class="field"><label>Service ID</label><input id="ejsService" value="${esc(c.serviceId || '')}" placeholder="service_xxxxxxx" /></div>
+      <div class="field"><label>Template ID</label><input id="ejsTemplate" value="${esc(c.templateId || '')}" placeholder="template_xxxxxxx" /></div>
+      <div class="field"><label>Public Key</label><input id="ejsKey" value="${esc(c.publicKey || '')}" placeholder="chave pública" /></div>`;
+    const saveBtn = el('button', 'btn btn--primary', 'Salvar EmailJS');
+    const ejsMsg = el('div', 'admin-note');
+    saveBtn.onclick = () => {
+      const data = { serviceId: val('ejsService'), templateId: val('ejsTemplate'), publicKey: val('ejsKey') };
+      try { localStorage.setItem(EJS_KEY, JSON.stringify(data)); } catch {}
+      ejsMsg.textContent = '✅ Chaves salvas. O canal E-mail passa a enviar de verdade.';
+      setTimeout(renderConexao, 600);
+    };
+    ejs.appendChild(saveBtn); ejs.appendChild(ejsMsg);
+    body.appendChild(ejs);
+    body.appendChild(el('div', 'admin-note', 'No template do EmailJS use as variáveis {{to_email}}, {{to_name}}, {{link}} e {{phone}}, e em "To Email" use {{to_email}}.'));
   }
 
   window.AdminUI = { open, close };
