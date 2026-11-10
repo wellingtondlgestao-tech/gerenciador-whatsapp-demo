@@ -173,6 +173,13 @@ body {
 /* ---- galerias (mídia / figurinhas / gif) ---- */
 .gallery { padding: 14px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .gallery--stickers { grid-template-columns: repeat(4, 1fr); }
+.media-cell { display: flex; flex-direction: column; gap: 6px; }
+.media-cell .tile { aspect-ratio: 1; }
+.media-cap { font-size: 11px; line-height: 1.3; padding: 0 2px; }
+.media-cap__contact { display: block; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.media-cap__meta { display: block; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.media-cap__meta.is-out { color: var(--accent); }
+.tile__badge--vo { top: 6px; right: 6px; left: auto; bottom: auto; background: rgba(123,85,192,.92); }
 .tile {
   aspect-ratio: 1; border-radius: 10px; overflow: hidden; background: var(--panel-2);
   display: flex; align-items: center; justify-content: center; font-size: 34px; position: relative;

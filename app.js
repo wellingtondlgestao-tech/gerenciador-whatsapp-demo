@@ -100,13 +100,17 @@ async function renderList() {
       body.innerHTML = '';
       if (!items.length) return body.appendChild(el('div', 'empty-note', 'Nenhuma mensagem apagada neste número.'));
       for (const d of items) {
+        const dBody = d.originalType === 'image' ? `🖼️ Foto apagada${d.text ? ' — ' + esc(d.text) : ''}`
+          : d.originalType === 'video' ? `🎥 Vídeo apagado${d.text ? ' — ' + esc(d.text) : ''}`
+          : d.originalType === 'sticker' ? '😎 Figurinha apagada'
+          : esc(d.text);
         const box = el('div', 'deleted-item');
         box.innerHTML = `
           <div class="deleted-item__head">
             <span class="deleted-item__peer">${esc(d.conv)}</span>
             <span class="deleted-item__when">apagada ${esc(d.when)}</span>
           </div>
-          <div class="deleted-item__body">${esc(d.text)}</div>
+          <div class="deleted-item__body">${dBody}</div>
           <div class="deleted-item__sub">${d.dir === 'in' ? 'Recebida' : 'Enviada'} · clique para ver na conversa</div>`;
         box.style.cursor = 'pointer';
         box.onclick = () => openDeletedConversation(d.convId);
@@ -120,11 +124,18 @@ async function renderList() {
       const items = await api.getMedia(state.numberId, state.folder);
       body.innerHTML = '';
       if (!items.length) return body.appendChild(el('div', 'empty-note', 'Nada por aqui ainda.'));
-      const g = el('div', 'gallery' + (state.folder === 'figurinhas' ? ' gallery--stickers' : ''));
+      const g = el('div', 'gallery');
       for (const it of items) {
-        const t = el('div', 'tile', it);
+        const cell = el('div', 'media-cell');
+        const t = el('div', 'tile', it.media || '🖼️');
+        if (it.kind === 'video') t.appendChild(el('span', 'tile__badge', '▶ vídeo'));
         if (state.folder === 'gifs') t.appendChild(el('span', 'tile__badge', 'GIF'));
-        g.appendChild(t);
+        if (it.viewOnce) t.appendChild(el('span', 'tile__badge tile__badge--vo', '👁 1x'));
+        cell.appendChild(t);
+        cell.appendChild(el('div', 'media-cap', `
+          <span class="media-cap__contact" title="${esc(it.contact || '')}">${esc(it.contact || '—')}</span>
+          <span class="media-cap__meta ${it.dir === 'in' ? 'is-in' : 'is-out'}">${it.dir === 'in' ? '↙ Recebida' : '↗ Enviada'}${it.viewOnce ? ' · visualização única' : ''}</span>`));
+        g.appendChild(cell);
       }
       body.appendChild(g);
       return;
@@ -220,9 +231,13 @@ function renderMessage(m) {
   if (m.type === 'deleted') {
     if (state.revealDeleted) {
       const r = el('div', 'msg msg--' + m.dir + ' msg--revealed');
+      const ot = m.originalType || 'text';
       let ri = '';
       if (m.sender && m.dir === 'in') ri += `<div class="msg__sender">${esc(m.sender)}</div>`;
-      ri += `<div>${esc(m.text)}</div>`;
+      if (ot === 'image') ri += `<div class="msg__media" style="background:var(--panel-3);height:150px;display:flex;align-items:center;justify-content:center;font-size:46px">${m.media || '🖼️'}</div>`;
+      else if (ot === 'video') ri += `<div class="msg__media" style="background:var(--panel-3);height:140px;display:flex;align-items:center;justify-content:center;font-size:44px">${m.media || '🎥'}<span class="tile__badge" style="position:static;margin-left:8px">▶ vídeo</span></div>`;
+      else if (ot === 'sticker') ri += `<div class="msg__sticker">${m.media || '😀'}</div>`;
+      if (m.text && ot !== 'sticker') ri += `<div>${esc(m.text)}</div>`;
       ri += `<div class="msg__meta"><span class="tag tag--deleted">🚫 apagada ${esc(m.deletedAt || '')}</span><span class="msg__time">${m.time || ''}</span></div>`;
       r.innerHTML = ri;
       return r;

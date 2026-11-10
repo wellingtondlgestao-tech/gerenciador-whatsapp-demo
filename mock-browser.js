@@ -32,6 +32,7 @@
         m({ id: 'm2', dir: 'in',  sender: 'Rafael', type: 'sticker', media: '🎉', time: '11:01', day: 'Hoje' }),
         m({ id: 'm3', dir: 'in',  sender: 'Beatriz', text: 'Parabéns time!', time: '11:02', day: 'Hoje' }),
         m({ id: 'm4', dir: 'out', text: 'Excelente! Vou preparar a proposta de recorrência.', time: '11:05', day: 'Hoje' }),
+        m({ id: 'm5', dir: 'in', sender: 'Beatriz', type: 'deleted', originalType: 'image', media: '📸', text: 'Foto do fechamento', deletedAt: '11:07', time: '11:07', day: 'Hoje' }),
       ]},
     ],
     n2: [
@@ -47,9 +48,30 @@
   };
 
   const MEDIA = {
-    midias: ['🏞️','🌆','📦','🧾','🖼️','📸','🏔️','🌅','🍕'],
-    figurinhas: ['🎉','😂','👍','❤️','🔥','🙏','😎','🥳','🤝','💯','🚀','✨'],
-    gifs: ['🎞️','📺','🎬','🕺','💃','🐱'],
+    midias: [
+      { media: '🏞️', kind: 'image', contact: 'Maria Silva',       dir: 'in',  time: '09:20' },
+      { media: '🎥', kind: 'video', contact: 'Grupo — Vendas SP', dir: 'in',  time: '11:03' },
+      { media: '📦', kind: 'image', contact: 'Carlos Pereira',    dir: 'out', time: '14:30' },
+      { media: '📸', kind: 'image', contact: 'Fernanda Costa',    dir: 'in',  viewOnce: true, time: '10:11' },
+      { media: '🖼️', kind: 'image', contact: 'Maria Silva',       dir: 'out', viewOnce: true, time: '09:21' },
+      { media: '🌅', kind: 'image', contact: 'Mãe ❤️',            dir: 'in',  time: '07:30' },
+      { media: '🎬', kind: 'video', contact: 'Oficina do Pedro',  dir: 'out', time: '17:40' },
+      { media: '🏔️', kind: 'image', contact: 'Grupo — Vendas SP', dir: 'in',  time: '11:00' },
+      { media: '🍕', kind: 'image', contact: 'Carlos Pereira',    dir: 'in',  time: '12:15' },
+    ],
+    figurinhas: [
+      { media: '🎉', contact: 'Rafael',         dir: 'in',  time: '11:01' },
+      { media: '😂', contact: 'Maria Silva',    dir: 'in',  time: '09:05' },
+      { media: '👍', contact: 'Atendimento',    dir: 'out', time: '09:16' },
+      { media: '❤️', contact: 'Mãe ❤️',         dir: 'in',  time: '07:31' },
+      { media: '🔥', contact: 'Beatriz',        dir: 'in',  time: '11:02' },
+      { media: '🙏', contact: 'Carlos Pereira', dir: 'out', time: '14:33' },
+    ],
+    gifs: [
+      { media: '🎞️', contact: 'Mãe ❤️',          dir: 'in',  time: '07:30' },
+      { media: '📺', contact: 'Grupo — Vendas SP', dir: 'in', time: '11:04' },
+      { media: '🕺', contact: 'Rafael',           dir: 'out', time: '11:05' },
+    ],
   };
 
   const TEAM = [
@@ -91,7 +113,7 @@
   }
   function listDeleted(id) {
     const out = [];
-    for (const c of (CONVERSATIONS[id] || [])) for (const x of c.messages) if (x.type === 'deleted') out.push({ convId: c.id, conv: c.name, when: x.deletedAt, text: x.text, dir: x.dir });
+    for (const c of (CONVERSATIONS[id] || [])) for (const x of c.messages) if (x.type === 'deleted') out.push({ convId: c.id, conv: c.name, when: x.deletedAt, text: x.text, dir: x.dir, originalType: x.originalType || 'text', media: x.media });
     return out;
   }
   function connectState(t) {
