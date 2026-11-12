@@ -5,7 +5,7 @@ services:
     name: gerenciador-whatsapp
     runtime: node
     plan: free
-    buildCommand: ""
+    buildCommand: npm install
     startCommand: node server/whatsapp-backend.js
     envVars:
       - key: VERIFY_TOKEN
@@ -15,6 +15,8 @@ services:
       - key: APP_SECRET
         sync: false
       - key: COEXY_HMAC_SECRET
+        sync: false
+      - key: DATABASE_URL
         sync: false
       - key: WA_NUMBERS
         sync: false

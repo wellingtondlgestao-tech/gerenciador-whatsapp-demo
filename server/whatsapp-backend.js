@@ -33,6 +33,38 @@ const LOGIN_EMAIL = (process.env.LOGIN_EMAIL || 'admin@empresa.com').toLowerCase
 const LOGIN_PASSWORD = process.env.LOGIN_PASSWORD || 'trocar123';
 const ROOT = path.join(__dirname, '..'); // arquivos da UI na raiz do repo
 const STARTED_AT = new Date().toISOString();
+const SELF_URL = (process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, ''); // p/ keep-alive
+
+/* --------- Persistência opcional (Postgres). Sem DATABASE_URL = memória. ---- */
+let dbPool = null;
+if (process.env.DATABASE_URL) {
+  try {
+    const { Pool } = require('pg');
+    dbPool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+  } catch (e) { console.warn('pg indisponível — rodando sem banco. Defina Build Command "npm install".'); }
+}
+async function dbInit() {
+  if (!dbPool) return;
+  await dbPool.query('CREATE TABLE IF NOT EXISTS messages (wamid text PRIMARY KEY, number_id text, conv_id text, conv_name text, ui jsonb, created_at timestamptz DEFAULT now())');
+}
+async function dbLoad() {
+  if (!dbPool) return;
+  const { rows } = await dbPool.query('SELECT number_id, conv_id, conv_name, ui FROM messages ORDER BY created_at ASC');
+  for (const r of rows) {
+    if (!store[r.number_id]) continue;
+    const conv = ensureConv(r.number_id, r.conv_id, r.conv_name);
+    conv.messages.push(r.ui);
+    if (r.ui && r.ui.id) seenBefore(r.number_id, r.ui.id);
+  }
+  console.log(`Banco: ${rows.length} mensagens carregadas`);
+}
+function dbSave(numberId, conv, ui) {
+  if (!dbPool || !ui || !ui.id) return;
+  dbPool.query(
+    'INSERT INTO messages (wamid, number_id, conv_id, conv_name, ui) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (wamid) DO NOTHING',
+    [ui.id, numberId, conv.id, conv.name, JSON.stringify(ui)],
+  ).catch((e) => console.error('dbSave:', e.message));
+}
 
 let NUMBERS = [];
 try { NUMBERS = JSON.parse(process.env.WA_NUMBERS || '[]'); } catch { NUMBERS = []; }
@@ -179,6 +211,7 @@ function handleWebhook(body) {
         conv.messages.push(ui);
         conv.unread = (conv.unread || 0) + 1;
         broadcast(number.id, 'message', { convId: conv.id, message: ui, unread: conv.unread });
+        dbSave(number.id, conv, ui);
         console.log(`[${number.id}] recebida de ${conv.name}: ${ui.text || ui.type}`);
       }
       // Ecos (mensagens enviadas pelo próprio número — coexistência)
@@ -189,6 +222,7 @@ function handleWebhook(body) {
         const ui = toUiMessage(msg, 'out', number.id);
         conv.messages.push(ui);
         broadcast(number.id, 'message', { convId: conv.id, message: ui, unread: conv.unread || 0 });
+        dbSave(number.id, conv, ui);
       }
     }
   }
@@ -275,6 +309,9 @@ const newToken = () => Math.random().toString(36).slice(2) + Date.now().toString
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const p = url.pathname, method = req.method;
+
+  // ---- Health check (keep-alive) ----
+  if (p === '/healthz') { res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end('ok'); }
 
   // ---- Webhook da Meta ----
   if (p === '/webhook' && method === 'GET') {
@@ -368,8 +405,15 @@ const server = http.createServer(async (req, res) => {
   serveStatic(res, p);
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
   console.log(`Backend WhatsApp (somente leitura) em http://localhost:${PORT}`);
   console.log(`Números configurados: ${NUMBERS.length ? NUMBERS.map((n) => `${n.id} (${n.phone_number_id})`).join(', ') : 'NENHUM — defina WA_NUMBERS'}`);
-  console.log(`Webhook: GET/POST /webhook · VERIFY_TOKEN ${VERIFY_TOKEN === 'verifique-me' ? '(padrão — troque!)' : 'definido'}`);
+  console.log(`Banco: ${dbPool ? 'Postgres (DATABASE_URL)' : 'memória (sem DATABASE_URL)'}`);
+  try { await dbInit(); await dbLoad(); } catch (e) { console.error('Banco (init/load):', e.message); }
+  if (SELF_URL) {
+    setInterval(() => { try { https.get(SELF_URL + '/healthz', (r) => r.resume()).on('error', () => {}); } catch (e) {} }, 10 * 60 * 1000);
+    console.log('Keep-alive ativo:', SELF_URL + '/healthz');
+  } else {
+    console.log('Keep-alive inativo (RENDER_EXTERNAL_URL não definido)');
+  }
 });
