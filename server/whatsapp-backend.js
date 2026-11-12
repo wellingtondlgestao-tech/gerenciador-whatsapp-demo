@@ -74,6 +74,7 @@ function dayLabel(tsSeconds) {
 }
 
 const SEEN_PIDS = new Set(); // phone_number_ids que chegaram por webhook (diagnóstico)
+let LAST_EVENT = null;        // resumo (sem conteúdo) do último evento recebido
 function ensureConv(numberId, waId, name) {
   const s = store[numberId]; if (!s) return null;
   if (!s.convs.has(waId)) s.convs.set(waId, { id: waId, name: name || waId, phone: '+' + waId, locked: false, unread: 0, messages: [] });
@@ -154,6 +155,15 @@ function handleWebhook(body) {
       const value = change.value || {};
       const pid = value.metadata && value.metadata.phone_number_id;
       if (pid) SEEN_PIDS.add(pid);
+      LAST_EVENT = {
+        field: change.field, pid,
+        qtdMessages: (value.messages || []).length,
+        qtdEcos: (value.message_echoes || value.smb_message_echoes || []).length,
+        qtdStatuses: (value.statuses || []).length,
+        tipos: (value.messages || []).map((m) => m.type),
+        chaves: Object.keys(value),
+        em: new Date().toISOString(),
+      };
       // Se o phone_number_id não bater mas só houver 1 número configurado, usa ele (setup single-canal).
       const number = numberByPhoneId(pid) || (NUMBERS.length === 1 ? NUMBERS[0] : null);
       if (!number) { console.warn('Webhook de phone_number_id não configurado:', pid); continue; }
@@ -301,6 +311,7 @@ const server = http.createServer(async (req, res) => {
       mensagensPorNumero: Object.fromEntries(Object.entries(store).map(([id, s]) => [id, [...s.convs.values()].reduce((a, c) => a + c.messages.length, 0)])),
       hmacConfigurado: !!COEXY_HMAC_SECRET,
       iniciadoEm: STARTED_AT,
+      ultimoEvento: LAST_EVENT,
     });
     if ((g = p.match(/^\/api\/numbers\/([^/]+)\/conversations$/))) return sendJSON(res, listConversations(g[1], url.searchParams.get('folder') || 'conversas', url.searchParams.get('q') || ''));
     if ((g = p.match(/^\/api\/numbers\/([^/]+)\/conversations\/([^/]+)\/messages$/))) {
