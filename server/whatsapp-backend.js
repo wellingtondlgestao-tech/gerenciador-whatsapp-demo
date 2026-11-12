@@ -70,18 +70,49 @@ function ensureConv(numberId, waId, name) {
   return c;
 }
 
+const mediaUrlFor = (id) => (id ? '/api/media/' + encodeURIComponent(id) : undefined);
 // Converte uma mensagem da Cloud API para o formato da UI.
 function toUiMessage(msg, dir) {
   const base = { id: msg.id, dir, time: hhmm(msg.timestamp), day: dayLabel(msg.timestamp) };
   switch (msg.type) {
     case 'text': return Object.assign(base, { type: 'text', text: msg.text && msg.text.body });
-    case 'image': return Object.assign(base, { type: 'image', media: '🖼️', text: (msg.image && msg.image.caption) || '', mediaId: msg.image && msg.image.id });
-    case 'video': return Object.assign(base, { type: 'image', media: '🎥', text: (msg.video && msg.video.caption) || 'Vídeo', mediaId: msg.video && msg.video.id });
-    case 'audio': return Object.assign(base, { type: 'audio', text: 'Áudio', mediaId: msg.audio && msg.audio.id });
-    case 'sticker': return Object.assign(base, { type: 'sticker', media: '🧩', mediaId: msg.sticker && msg.sticker.id });
-    case 'document': return Object.assign(base, { type: 'doc', text: (msg.document && (msg.document.filename || 'Documento')) });
+    case 'image': { const id = msg.image && msg.image.id; return Object.assign(base, { type: 'image', media: '🖼️', text: (msg.image && msg.image.caption) || '', mediaId: id, mediaUrl: mediaUrlFor(id) }); }
+    case 'video': { const id = msg.video && msg.video.id; return Object.assign(base, { type: 'video', media: '🎥', text: (msg.video && msg.video.caption) || '', mediaId: id, mediaUrl: mediaUrlFor(id) }); }
+    case 'audio': { const id = msg.audio && msg.audio.id; return Object.assign(base, { type: 'audio', text: 'Áudio', mediaId: id, mediaUrl: mediaUrlFor(id) }); }
+    case 'sticker': { const id = msg.sticker && msg.sticker.id; return Object.assign(base, { type: 'sticker', media: '🧩', mediaId: id, mediaUrl: mediaUrlFor(id) }); }
+    case 'document': { const id = msg.document && msg.document.id; return Object.assign(base, { type: 'doc', text: (msg.document && (msg.document.filename || 'Documento')), mediaId: id, mediaUrl: mediaUrlFor(id) }); }
     default: return Object.assign(base, { type: 'text', text: '[' + msg.type + ']' });
   }
+}
+
+/* ------------------------- DOWNLOAD DE MÍDIA --------------------------- *
+ * A Cloud API entrega mídia por ID: GET /{id} dá uma URL temporária, que
+ * baixamos com o mesmo token. Fazemos cache em memória para não rebaixar.
+ * ----------------------------------------------------------------------- */
+const GRAPH_VERSION = 'v21.0';
+function httpsGet(targetUrl, token) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(targetUrl, { headers: token ? { Authorization: 'Bearer ' + token } : {} }, (r) => {
+      const chunks = []; r.on('data', (c) => chunks.push(c)); r.on('end', () => resolve({ status: r.statusCode, headers: r.headers, body: Buffer.concat(chunks) }));
+    });
+    req.on('error', reject);
+    req.setTimeout(20000, () => req.destroy(new Error('timeout')));
+  });
+}
+const mediaCache = new Map(); // id -> { buf, mime }
+async function fetchMedia(id) {
+  if (mediaCache.has(id)) return mediaCache.get(id);
+  if (!WHATSAPP_TOKEN) throw new Error('WHATSAPP_TOKEN ausente');
+  const meta = await httpsGet(`https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(id)}`, WHATSAPP_TOKEN);
+  if (meta.status !== 200) throw new Error('meta HTTP ' + meta.status);
+  const info = JSON.parse(meta.body.toString('utf8'));
+  if (!info.url) throw new Error('sem url de mídia');
+  const bin = await httpsGet(info.url, WHATSAPP_TOKEN);
+  if (bin.status !== 200) throw new Error('download HTTP ' + bin.status);
+  const out = { buf: bin.body, mime: info.mime_type || bin.headers['content-type'] || 'application/octet-stream' };
+  mediaCache.set(id, out);
+  if (mediaCache.size > 200) mediaCache.delete(mediaCache.keys().next().value);
+  return out;
 }
 
 /* ----------------------------- SSE (tempo real) ------------------------- */
@@ -145,13 +176,12 @@ function listConversations(numberId, folder, q) {
 }
 function listMedia(numberId, kind) {
   const s = store[numberId]; if (!s) return [];
-  const wants = kind === 'figurinhas' ? ['sticker'] : kind === 'gifs' ? ['gif'] : ['image'];
   const out = [];
   for (const c of s.convs.values()) for (const m of c.messages) {
-    const isImg = m.type === 'image';
-    const isSticker = m.type === 'sticker';
-    if ((kind === 'midias' && isImg) || (kind === 'figurinhas' && isSticker)) {
-      out.push({ media: m.media || '🖼️', kind: 'image', contact: c.name, dir: m.dir, time: m.time });
+    const inMidias = kind === 'midias' && (m.type === 'image' || m.type === 'video');
+    const inFig = kind === 'figurinhas' && m.type === 'sticker';
+    if (inMidias || inFig) {
+      out.push({ media: m.media || '🖼️', kind: m.type === 'video' ? 'video' : 'image', contact: c.name, dir: m.dir, time: m.time, mediaUrl: m.mediaUrl });
     }
   }
   return out;
@@ -237,6 +267,16 @@ const server = http.createServer(async (req, res) => {
     }
     if ((g = p.match(/^\/api\/numbers\/([^/]+)\/deleted$/))) return sendJSON(res, []); // Cloud API não notifica exclusões
     if ((g = p.match(/^\/api\/numbers\/([^/]+)\/media$/))) return sendJSON(res, listMedia(g[1], url.searchParams.get('kind') || 'midias'));
+    if ((g = p.match(/^\/api\/media\/([^/]+)$/)) && method === 'GET') {
+      try {
+        const md = await fetchMedia(decodeURIComponent(g[1]));
+        res.writeHead(200, { 'Content-Type': md.mime, 'Cache-Control': 'private, max-age=3600' });
+        return res.end(md.buf);
+      } catch (e) {
+        res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
+        return res.end('Falha ao obter mídia: ' + e.message);
+      }
+    }
     if ((g = p.match(/^\/api\/numbers\/([^/]+)\/stream$/))) {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
       res.write('event: ready\ndata: {}\n\n');

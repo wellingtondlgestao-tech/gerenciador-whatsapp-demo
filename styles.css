@@ -230,6 +230,9 @@ body {
 .msg__media { border-radius: 8px; overflow: hidden; margin-bottom: 4px; max-width: 320px; }
 .msg__media img { width: 100%; display: block; }
 .msg__sticker { font-size: 72px; line-height: 1; }
+.msg__img, .msg__video { max-width: 320px; width: 100%; border-radius: 8px; display: block; margin-bottom: 4px; }
+.msg__sticker-img { width: 120px; height: 120px; object-fit: contain; display: block; }
+.msg__audio-el { width: 240px; max-width: 100%; margin-bottom: 2px; }
 .msg__audio { display: flex; align-items: center; gap: 10px; min-width: 200px; color: var(--text-2); }
 .msg__audio-bar { flex: 1; height: 3px; background: var(--panel-3); border-radius: 3px; position: relative; }
 .msg__audio-bar::after { content:""; position:absolute; left:0; top:0; bottom:0; width:40%; background: var(--accent); border-radius:3px; }

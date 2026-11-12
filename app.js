@@ -48,6 +48,7 @@ const esc = (s) => (s || '').replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;'
 function previewText(m) {
   if (!m) return '';
   if (m.type === 'image') return '🖼️ Foto';
+  if (m.type === 'video') return '🎥 Vídeo';
   if (m.type === 'sticker') return '😎 Figurinha';
   if (m.type === 'gif') return '🎞️ GIF';
   if (m.type === 'audio') return '🎤 Áudio ' + (m.text || '');
@@ -127,7 +128,9 @@ async function renderList() {
       const g = el('div', 'gallery');
       for (const it of items) {
         const cell = el('div', 'media-cell');
-        const t = el('div', 'tile', it.media || '🖼️');
+        const t = el('div', 'tile');
+        if (it.mediaUrl) { const img = el('img'); img.src = it.mediaUrl; img.loading = 'lazy'; img.alt = ''; t.appendChild(img); }
+        else t.textContent = it.media || '🖼️';
         if (it.kind === 'video') t.appendChild(el('span', 'tile__badge', '▶ vídeo'));
         if (state.folder === 'gifs') t.appendChild(el('span', 'tile__badge', 'GIF'));
         if (it.viewOnce) t.appendChild(el('span', 'tile__badge tile__badge--vo', '👁 1x'));
@@ -248,11 +251,22 @@ function renderMessage(m) {
   const n = el('div', 'msg msg--' + m.dir);
   let inner = '';
   if (m.sender && m.dir === 'in') inner += `<div class="msg__sender">${esc(m.sender)}</div>`;
-  if (m.type === 'image') inner += `<div class="msg__media" style="background:var(--panel-3);height:180px;display:flex;align-items:center;justify-content:center;font-size:54px">${m.media || '🖼️'}</div>`;
-  if (m.type === 'sticker') inner += `<div class="msg__sticker">${m.media || '😀'}</div>`;
+  if (m.type === 'image') inner += m.mediaUrl
+    ? `<img class="msg__img" src="${esc(m.mediaUrl)}" alt="imagem" loading="lazy" />`
+    : `<div class="msg__media" style="background:var(--panel-3);height:180px;display:flex;align-items:center;justify-content:center;font-size:54px">${m.media || '🖼️'}</div>`;
+  if (m.type === 'video') inner += m.mediaUrl
+    ? `<video class="msg__video" src="${esc(m.mediaUrl)}" controls preload="metadata"></video>`
+    : `<div class="msg__media" style="background:var(--panel-3);height:160px;display:flex;align-items:center;justify-content:center;font-size:50px">${m.media || '🎥'}<span class="tile__badge" style="position:static;margin-left:8px">▶ vídeo</span></div>`;
+  if (m.type === 'sticker') inner += m.mediaUrl
+    ? `<img class="msg__sticker-img" src="${esc(m.mediaUrl)}" alt="figurinha" loading="lazy" />`
+    : `<div class="msg__sticker">${m.media || '😀'}</div>`;
   if (m.type === 'gif') inner += `<div class="msg__media" style="background:var(--panel-3);height:150px;display:flex;align-items:center;justify-content:center;font-size:48px">${m.media || '🎞️'}<span class="tile__badge" style="position:static;margin-left:8px">GIF</span></div>`;
-  if (m.type === 'audio') inner += `<div class="msg__audio">▶️ <span class="msg__audio-bar"></span><span>${esc(m.text)}</span></div>`;
-  if (m.type === 'doc') inner += `<div class="msg__doc">📄 <span>${esc(m.text)}</span></div>`;
+  if (m.type === 'audio') inner += m.mediaUrl
+    ? `<audio class="msg__audio-el" src="${esc(m.mediaUrl)}" controls preload="none"></audio>`
+    : `<div class="msg__audio">▶️ <span class="msg__audio-bar"></span><span>${esc(m.text)}</span></div>`;
+  if (m.type === 'doc') inner += m.mediaUrl
+    ? `<a class="msg__doc" href="${esc(m.mediaUrl)}" target="_blank" rel="noopener">📄 <span>${esc(m.text)}</span></a>`
+    : `<div class="msg__doc">📄 <span>${esc(m.text)}</span></div>`;
   if (m.text && !['audio', 'doc', 'sticker'].includes(m.type)) inner += `<div>${esc(m.text)}</div>`;
   inner += `<div class="msg__meta"><span class="msg__time">${m.time || ''}</span>${m.dir === 'out' ? ' <span class="msg__time">✓✓</span>' : ''}</div>`;
   n.innerHTML = inner;
