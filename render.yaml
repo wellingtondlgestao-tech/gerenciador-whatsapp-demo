@@ -14,6 +14,8 @@ services:
         sync: false
       - key: APP_SECRET
         sync: false
+      - key: COEXY_SECRET
+        sync: false
       - key: WA_NUMBERS
         sync: false
       - key: WABA_ID

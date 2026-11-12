@@ -27,6 +27,7 @@ const PORT = process.env.PORT || 3000;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'verifique-me';
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN || '';
 const APP_SECRET = process.env.APP_SECRET || '';
+const COEXY_SECRET = process.env.COEXY_SECRET || ''; // segredo do webhook do Coexy (X-Coexy-Signature)
 const LOGIN_EMAIL = (process.env.LOGIN_EMAIL || 'admin@empresa.com').toLowerCase();
 const LOGIN_PASSWORD = process.env.LOGIN_PASSWORD || 'trocar123';
 const ROOT = path.join(__dirname, '..'); // arquivos da UI na raiz do repo
@@ -151,7 +152,7 @@ function handleWebhook(body) {
         console.log(`[${number.id}] recebida de ${conv.name}: ${ui.text || ui.type}`);
       }
       // Ecos (mensagens enviadas pelo próprio número, quando habilitado)
-      for (const msg of value.message_echoes || []) {
+      for (const msg of (value.message_echoes || value.smb_message_echoes || [])) {
         const waId = msg.to || (msg.recipient_id);
         const conv = ensureConv(number.id, waId, contacts[waId]);
         const ui = toUiMessage(msg, 'out');
@@ -200,11 +201,23 @@ function readRaw(req) {
     req.on('end', () => resolve(Buffer.concat(chunks)));
   });
 }
-function validSignature(raw, header) {
-  if (!APP_SECRET) return true; // sem segredo configurado, não valida (apenas teste)
-  if (!header) return false;
-  const expected = 'sha256=' + crypto.createHmac('sha256', APP_SECRET).update(raw).digest('hex');
-  try { return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(header)); } catch { return false; }
+const hmacHex = (secret, raw) => crypto.createHmac('sha256', secret).update(raw).digest('hex');
+// Aceita tanto a assinatura da Meta (X-Hub-Signature-256) quanto a do Coexy (X-Coexy-Signature).
+function checkWebhookSignature(req, raw) {
+  const metaSig = req.headers['x-hub-signature-256'];
+  const coexySig = req.headers['x-coexy-signature'];
+  if (metaSig) {
+    if (!APP_SECRET) return true; // modo teste
+    const expected = 'sha256=' + hmacHex(APP_SECRET, raw);
+    try { return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(metaSig)); } catch { return false; }
+  }
+  if (coexySig) {
+    if (!COEXY_SECRET) return true; // modo teste
+    const hex = hmacHex(COEXY_SECRET, raw);
+    return coexySig === hex || coexySig === 'sha256=' + hex; // aceita com e sem prefixo
+  }
+  // Sem assinatura: só aceita se nenhum segredo estiver configurado (modo teste)
+  return !APP_SECRET && !COEXY_SECRET;
 }
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json; charset=utf-8', '.ico': 'image/x-icon' };
@@ -242,7 +255,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (p === '/webhook' && method === 'POST') {
     const raw = await readRaw(req);
-    if (!validSignature(raw, req.headers['x-hub-signature-256'])) { res.writeHead(401); return res.end('invalid signature'); }
+    if (!checkWebhookSignature(req, raw)) { res.writeHead(401); return res.end('invalid signature'); }
     let body = {}; try { body = JSON.parse(raw.toString('utf8')); } catch {}
     try { handleWebhook(body); } catch (e) { console.error('Erro no webhook:', e); }
     res.writeHead(200); return res.end('EVENT_RECEIVED');
