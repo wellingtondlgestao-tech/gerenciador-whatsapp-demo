@@ -32,6 +32,7 @@ const COEXY_PROXY_BASE = 'https://api.coexy.com.br/functions/v1/meta-proxy'; // 
 const LOGIN_EMAIL = (process.env.LOGIN_EMAIL || 'admin@empresa.com').toLowerCase();
 const LOGIN_PASSWORD = process.env.LOGIN_PASSWORD || 'trocar123';
 const ROOT = path.join(__dirname, '..'); // arquivos da UI na raiz do repo
+const STARTED_AT = new Date().toISOString();
 
 let NUMBERS = [];
 try { NUMBERS = JSON.parse(process.env.WA_NUMBERS || '[]'); } catch { NUMBERS = []; }
@@ -72,6 +73,7 @@ function dayLabel(tsSeconds) {
   return d.toLocaleDateString('pt-BR');
 }
 
+const SEEN_PIDS = new Set(); // phone_number_ids que chegaram por webhook (diagnóstico)
 function ensureConv(numberId, waId, name) {
   const s = store[numberId]; if (!s) return null;
   if (!s.convs.has(waId)) s.convs.set(waId, { id: waId, name: name || waId, phone: '+' + waId, locked: false, unread: 0, messages: [] });
@@ -151,7 +153,9 @@ function handleWebhook(body) {
     for (const change of entry.changes || []) {
       const value = change.value || {};
       const pid = value.metadata && value.metadata.phone_number_id;
-      const number = numberByPhoneId(pid);
+      if (pid) SEEN_PIDS.add(pid);
+      // Se o phone_number_id não bater mas só houver 1 número configurado, usa ele (setup single-canal).
+      const number = numberByPhoneId(pid) || (NUMBERS.length === 1 ? NUMBERS[0] : null);
       if (!number) { console.warn('Webhook de phone_number_id não configurado:', pid); continue; }
       const contacts = {};
       for (const c of value.contacts || []) contacts[c.wa_id] = c.profile && c.profile.name;
@@ -291,6 +295,13 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/numbers') return sendJSON(res, NUMBERS.map((n) => ({ id: n.id, name: n.name, phone: n.phone, type: n.type || 'comercial', status: n.status })));
     if (p === '/api/team') return sendJSON(res, [{ id: 'u1', name: 'Administrador', email: LOGIN_EMAIL, role: 'admin', numbers: NUMBERS.map((n) => n.id), active: true }]);
     if (p === '/api/config') return sendJSON(res, { maxNumbers: 3, connected: NUMBERS.length, webhookUrl: `${url.protocol}//${req.headers.host}/webhook`, wabaId: process.env.WABA_ID || '—', appId: process.env.APP_ID || '—', retentionDays: 90 });
+    if (p === '/api/debug') return sendJSON(res, {
+      configurado: NUMBERS.map((n) => ({ id: n.id, phone_number_id: n.phone_number_id, temChannelToken: !!n.channel_token })),
+      phoneNumberIdsRecebidos: [...SEEN_PIDS],
+      mensagensPorNumero: Object.fromEntries(Object.entries(store).map(([id, s]) => [id, [...s.convs.values()].reduce((a, c) => a + c.messages.length, 0)])),
+      hmacConfigurado: !!COEXY_HMAC_SECRET,
+      iniciadoEm: STARTED_AT,
+    });
     if ((g = p.match(/^\/api\/numbers\/([^/]+)\/conversations$/))) return sendJSON(res, listConversations(g[1], url.searchParams.get('folder') || 'conversas', url.searchParams.get('q') || ''));
     if ((g = p.match(/^\/api\/numbers\/([^/]+)\/conversations\/([^/]+)\/messages$/))) {
       const s = store[g[1]]; const conv = s && s.convs.get(g[2]); if (conv) conv.unread = 0;
