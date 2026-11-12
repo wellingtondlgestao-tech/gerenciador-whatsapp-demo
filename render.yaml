@@ -14,7 +14,7 @@ services:
         sync: false
       - key: APP_SECRET
         sync: false
-      - key: COEXY_SECRET
+      - key: COEXY_HMAC_SECRET
         sync: false
       - key: WA_NUMBERS
         sync: false

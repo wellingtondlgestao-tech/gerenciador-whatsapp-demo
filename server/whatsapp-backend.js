@@ -27,7 +27,8 @@ const PORT = process.env.PORT || 3000;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'verifique-me';
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN || '';
 const APP_SECRET = process.env.APP_SECRET || '';
-const COEXY_SECRET = process.env.COEXY_SECRET || ''; // segredo do webhook do Coexy (X-Coexy-Signature)
+const COEXY_HMAC_SECRET = process.env.COEXY_HMAC_SECRET || process.env.COEXY_SECRET || ''; // segredo do webhook do Coexy (X-Coexy-Signature)
+const COEXY_PROXY_BASE = 'https://api.coexy.com.br/functions/v1/meta-proxy'; // download de mídia via Coexy
 const LOGIN_EMAIL = (process.env.LOGIN_EMAIL || 'admin@empresa.com').toLowerCase();
 const LOGIN_PASSWORD = process.env.LOGIN_PASSWORD || 'trocar123';
 const ROOT = path.join(__dirname, '..'); // arquivos da UI na raiz do repo
@@ -47,7 +48,15 @@ const numberByPhoneId = (pid) => NUMBERS.find((n) => String(n.phone_number_id) =
  * Em produção isto vira um banco. Para o teste, memória basta.
  * ----------------------------------------------------------------------- */
 const store = {};
-NUMBERS.forEach((n) => { store[n.id] = { convs: new Map() }; });
+NUMBERS.forEach((n) => { store[n.id] = { convs: new Map(), seen: new Set() }; });
+// Deduplicação: o Coexy pode reentregar o mesmo evento (retries). Ignora wamid repetido.
+function seenBefore(numberId, wamid) {
+  const s = store[numberId]; if (!s || !wamid) return false;
+  if (s.seen.has(wamid)) return true;
+  s.seen.add(wamid);
+  if (s.seen.size > 5000) s.seen.delete(s.seen.values().next().value);
+  return false;
+}
 
 function hhmm(tsSeconds) {
   const d = tsSeconds ? new Date(Number(tsSeconds) * 1000) : new Date();
@@ -71,17 +80,18 @@ function ensureConv(numberId, waId, name) {
   return c;
 }
 
-const mediaUrlFor = (id) => (id ? '/api/media/' + encodeURIComponent(id) : undefined);
+const mediaUrlFor = (numberId, id) => (id ? '/api/media/' + encodeURIComponent(numberId) + '/' + encodeURIComponent(id) : undefined);
 // Converte uma mensagem da Cloud API para o formato da UI.
-function toUiMessage(msg, dir) {
+function toUiMessage(msg, dir, numberId) {
   const base = { id: msg.id, dir, time: hhmm(msg.timestamp), day: dayLabel(msg.timestamp) };
+  const mu = (id) => mediaUrlFor(numberId, id);
   switch (msg.type) {
     case 'text': return Object.assign(base, { type: 'text', text: msg.text && msg.text.body });
-    case 'image': { const id = msg.image && msg.image.id; return Object.assign(base, { type: 'image', media: '🖼️', text: (msg.image && msg.image.caption) || '', mediaId: id, mediaUrl: mediaUrlFor(id) }); }
-    case 'video': { const id = msg.video && msg.video.id; return Object.assign(base, { type: 'video', media: '🎥', text: (msg.video && msg.video.caption) || '', mediaId: id, mediaUrl: mediaUrlFor(id) }); }
-    case 'audio': { const id = msg.audio && msg.audio.id; return Object.assign(base, { type: 'audio', text: 'Áudio', mediaId: id, mediaUrl: mediaUrlFor(id) }); }
-    case 'sticker': { const id = msg.sticker && msg.sticker.id; return Object.assign(base, { type: 'sticker', media: '🧩', mediaId: id, mediaUrl: mediaUrlFor(id) }); }
-    case 'document': { const id = msg.document && msg.document.id; return Object.assign(base, { type: 'doc', text: (msg.document && (msg.document.filename || 'Documento')), mediaId: id, mediaUrl: mediaUrlFor(id) }); }
+    case 'image': { const id = msg.image && msg.image.id; return Object.assign(base, { type: 'image', media: '🖼️', text: (msg.image && msg.image.caption) || '', mediaId: id, mediaUrl: mu(id) }); }
+    case 'video': { const id = msg.video && msg.video.id; return Object.assign(base, { type: 'video', media: '🎥', text: (msg.video && msg.video.caption) || '', mediaId: id, mediaUrl: mu(id) }); }
+    case 'audio': { const id = msg.audio && msg.audio.id; return Object.assign(base, { type: 'audio', text: 'Áudio', mediaId: id, mediaUrl: mu(id) }); }
+    case 'sticker': { const id = msg.sticker && msg.sticker.id; return Object.assign(base, { type: 'sticker', media: '🧩', mediaId: id, mediaUrl: mu(id) }); }
+    case 'document': { const id = msg.document && msg.document.id; return Object.assign(base, { type: 'doc', text: (msg.document && (msg.document.filename || 'Documento')), mediaId: id, mediaUrl: mu(id) }); }
     default: return Object.assign(base, { type: 'text', text: '[' + msg.type + ']' });
   }
 }
@@ -100,18 +110,23 @@ function httpsGet(targetUrl, token) {
     req.setTimeout(20000, () => req.destroy(new Error('timeout')));
   });
 }
-const mediaCache = new Map(); // id -> { buf, mime }
-async function fetchMedia(id) {
-  if (mediaCache.has(id)) return mediaCache.get(id);
-  if (!WHATSAPP_TOKEN) throw new Error('WHATSAPP_TOKEN ausente');
-  const meta = await httpsGet(`https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(id)}`, WHATSAPP_TOKEN);
-  if (meta.status !== 200) throw new Error('meta HTTP ' + meta.status);
+const mediaCache = new Map(); // "numberId:id" -> { buf, mime }
+// Baixa a mídia: Coexy (channel_token no proxy) ou Meta direto (WHATSAPP_TOKEN na Graph).
+async function fetchMedia(number, id) {
+  const key = (number ? number.id : '-') + ':' + id;
+  if (mediaCache.has(key)) return mediaCache.get(key);
+  let base, token;
+  if (number && number.channel_token) { base = COEXY_PROXY_BASE; token = number.channel_token; }
+  else { base = `https://graph.facebook.com/${GRAPH_VERSION}`; token = WHATSAPP_TOKEN; }
+  if (!token) throw new Error('sem token de mídia (channel_token ou WHATSAPP_TOKEN)');
+  const meta = await httpsGet(`${base}/${encodeURIComponent(id)}`, token);
+  if (meta.status !== 200) throw new Error('metadados HTTP ' + meta.status);
   const info = JSON.parse(meta.body.toString('utf8'));
   if (!info.url) throw new Error('sem url de mídia');
-  const bin = await httpsGet(info.url, WHATSAPP_TOKEN);
+  const bin = await httpsGet(info.url, token); // mesmo Bearer, conforme spec
   if (bin.status !== 200) throw new Error('download HTTP ' + bin.status);
   const out = { buf: bin.body, mime: info.mime_type || bin.headers['content-type'] || 'application/octet-stream' };
-  mediaCache.set(id, out);
+  mediaCache.set(key, out);
   if (mediaCache.size > 200) mediaCache.delete(mediaCache.keys().next().value);
   return out;
 }
@@ -143,19 +158,21 @@ function handleWebhook(body) {
 
       // Mensagens recebidas
       for (const msg of value.messages || []) {
+        if (seenBefore(number.id, msg.id)) continue;
         const waId = msg.from;
         const conv = ensureConv(number.id, waId, contacts[waId]);
-        const ui = toUiMessage(msg, 'in');
+        const ui = toUiMessage(msg, 'in', number.id);
         conv.messages.push(ui);
         conv.unread = (conv.unread || 0) + 1;
         broadcast(number.id, 'message', { convId: conv.id, message: ui, unread: conv.unread });
         console.log(`[${number.id}] recebida de ${conv.name}: ${ui.text || ui.type}`);
       }
-      // Ecos (mensagens enviadas pelo próprio número, quando habilitado)
+      // Ecos (mensagens enviadas pelo próprio número — coexistência)
       for (const msg of (value.message_echoes || value.smb_message_echoes || [])) {
-        const waId = msg.to || (msg.recipient_id);
+        if (seenBefore(number.id, msg.id)) continue;
+        const waId = msg.to || msg.recipient_id;
         const conv = ensureConv(number.id, waId, contacts[waId]);
-        const ui = toUiMessage(msg, 'out');
+        const ui = toUiMessage(msg, 'out', number.id);
         conv.messages.push(ui);
         broadcast(number.id, 'message', { convId: conv.id, message: ui, unread: conv.unread || 0 });
       }
@@ -212,12 +229,12 @@ function checkWebhookSignature(req, raw) {
     try { return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(metaSig)); } catch { return false; }
   }
   if (coexySig) {
-    if (!COEXY_SECRET) return true; // modo teste
-    const hex = hmacHex(COEXY_SECRET, raw);
-    return coexySig === hex || coexySig === 'sha256=' + hex; // aceita com e sem prefixo
+    if (!COEXY_HMAC_SECRET) return true; // modo teste
+    const hex = hmacHex(COEXY_HMAC_SECRET, raw);
+    return coexySig === 'sha256=' + hex || coexySig === hex; // Coexy usa "sha256=<hex>"
   }
   // Sem assinatura: só aceita se nenhum segredo estiver configurado (modo teste)
-  return !APP_SECRET && !COEXY_SECRET;
+  return !APP_SECRET && !COEXY_HMAC_SECRET;
 }
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json; charset=utf-8', '.ico': 'image/x-icon' };
@@ -256,9 +273,10 @@ const server = http.createServer(async (req, res) => {
   if (p === '/webhook' && method === 'POST') {
     const raw = await readRaw(req);
     if (!checkWebhookSignature(req, raw)) { res.writeHead(401); return res.end('invalid signature'); }
+    res.writeHead(200); res.end('EVENT_RECEIVED'); // responde antes de processar (regra do Coexy: < 10s)
     let body = {}; try { body = JSON.parse(raw.toString('utf8')); } catch {}
     try { handleWebhook(body); } catch (e) { console.error('Erro no webhook:', e); }
-    res.writeHead(200); return res.end('EVENT_RECEIVED');
+    return;
   }
 
   // ---- API ----
@@ -280,9 +298,10 @@ const server = http.createServer(async (req, res) => {
     }
     if ((g = p.match(/^\/api\/numbers\/([^/]+)\/deleted$/))) return sendJSON(res, []); // Cloud API não notifica exclusões
     if ((g = p.match(/^\/api\/numbers\/([^/]+)\/media$/))) return sendJSON(res, listMedia(g[1], url.searchParams.get('kind') || 'midias'));
-    if ((g = p.match(/^\/api\/media\/([^/]+)$/)) && method === 'GET') {
+    if ((g = p.match(/^\/api\/media\/([^/]+)\/(.+)$/)) && method === 'GET') {
+      const num = NUMBERS.find((n) => n.id === g[1]);
       try {
-        const md = await fetchMedia(decodeURIComponent(g[1]));
+        const md = await fetchMedia(num, decodeURIComponent(g[2]));
         res.writeHead(200, { 'Content-Type': md.mime, 'Cache-Control': 'private, max-age=3600' });
         return res.end(md.buf);
       } catch (e) {
